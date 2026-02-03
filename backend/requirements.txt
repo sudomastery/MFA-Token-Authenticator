@@ -1,5 +1,5 @@
 fastapi==0.109.0
-uvicorn[standard]==0.27.0
+uvicorn[standard]==0.27.0 #server used to run the fast api application
 sqlalchemy==2.0.25
 psycopg[binary]==3.2.4
 alembic==1.13.1
