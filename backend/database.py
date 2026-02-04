@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from backend import models
+
 from config import get_settings
 
 
@@ -19,7 +19,7 @@ engine = create_engine(
 #Session factory - creates database sessions
 SessionLocal = sessionmaker(
     autocommit=False, #control when to save
-    authflush=False, #control when to send to db
+    autoflush=False, #control when to send to db
     bind=engine #bind to the engine
 
 )
