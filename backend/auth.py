@@ -1,4 +1,7 @@
-from passlib.context import CryptContext
+import bcrypt
+# bcrypt: Modern password hashing library (replaces passlib)
+# Uses Blowfish cipher with adaptive cost factor
+
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from typing import Optional, Dict, Any
@@ -6,26 +9,35 @@ from config import get_settings
 
 settings = get_settings()
 
-#Password hashing configuration
-
-pwd_context = CryptContext(
-    schemes=["bcrypt"], #user the bcrypt algorithm
-    deprecated="auto", #automatically handle dperecated schemes
-    bcrypt__rounds=12 #cost factor 2^12 secure but not too slow
-)
-
 
 def get_password_hash(password: str) -> str:
     """
-    Hash a plain text password using bcrypt
-
-    1. generates a random salt - unique to each password
-    2. combines password + salt
-    3. run through bcrypt algorithm
-    4. Returns: $2b$12$[salt][hash] - includes algorithm, cost, salt, and hash
-   
+    Hash a plain-text password using bcrypt.
+    
+    How bcrypt works:
+    1. Generates a random salt (unique per password)
+    2. Combines password + salt
+    3. Runs through bcrypt algorithm 2^12 times (cost factor = 12)
+    4. Returns: $2b$12$[salt][hash]
+    
+    Args:
+        password: Plain-text password from user
+        
+    Returns:
+        Hashed password string (safe to store in database)
     """
-    return pwd_context.hash(password)
+    # Convert password to bytes
+    password_bytes = password.encode('utf-8')
+    
+    # Generate salt with cost factor 12 (2^12 = 4096 iterations)
+    salt = bcrypt.gensalt(rounds=12)
+    
+    # Hash the password
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    
+    # Return as string for database storage
+    return hashed.decode('utf-8')
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -43,7 +55,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    # Convert both to bytes
+    password_bytes = plain_password.encode('utf-8')
+    hashed_bytes = hashed_password.encode('utf-8')
+    
+    # Verify using bcrypt's checkpw (constant-time comparison)
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """
