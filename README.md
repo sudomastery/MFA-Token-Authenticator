@@ -1,6 +1,6 @@
-# MFA Token Authenticator - Learning Project
+# MFA Token Authenticator
 
-A comprehensive implementation of Multi-Factor Authentication (MFA) using Time-based One-Time Passwords (TOTP) with support for popular authenticator apps like Microsoft Authenticator and Ente Auth.
+A secure Multi-Factor Authentication (MFA) system implementing Time-based One-Time Passwords (TOTP) with support for popular authenticator apps like Microsoft Authenticator, Google Authenticator, and Ente Auth.
 
 ## 📚 Table of Contents
 
@@ -21,21 +21,23 @@ A comprehensive implementation of Multi-Factor Authentication (MFA) using Time-b
 
 ## Project Overview
 
-This project is a **hands-on learning application** designed to understand and implement Multi-Factor Authentication from the ground up. Instead of using third-party authentication services, we'll build our own MFA system to understand:
+A complete Multi-Factor Authentication system built from the ground up, providing:
 
-- How authenticator apps generate those 6-digit codes
-- How servers validate these codes
-- The cryptographic principles behind TOTP
-- Secure user authentication workflows
-- QR code generation and scanning for easy setup
+- TOTP-based authentication with industry-standard authenticator apps
+- Secure token generation and validation
+- QR code generation for easy authenticator app setup
+- REST API for user authentication and MFA management
+- Encrypted storage of MFA secrets
 
-### Goals
+### Features
 
-✅ Implement a complete MFA authentication system  
-✅ Support industry-standard authenticator apps (Microsoft Authenticator, Ente Auth, Google Authenticator, etc.)  
-✅ Learn authentication concepts and security best practices  
-✅ Build a production-ready login flow  
-✅ Understand cryptographic principles (HMAC, SHA, time-based algorithms)  
+✅ Complete MFA authentication system with TOTP support  
+✅ Compatible with Microsoft Authenticator, Google Authenticator, Ente Auth, and other TOTP-based apps  
+✅ Secure password hashing with bcrypt  
+✅ JWT-based session management  
+✅ QR code generation for seamless authenticator app pairing  
+✅ Encrypted secret storage using Fernet (AES-256)  
+✅ Account recovery with backup codes  
 
 ---
 
