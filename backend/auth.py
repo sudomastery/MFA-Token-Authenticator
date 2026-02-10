@@ -30,6 +30,7 @@ def get_password_hash(password: str) -> str:
     password_bytes = password.encode('utf-8')
     
     # Generate salt with cost factor 12 (2^12 = 4096 iterations)
+    #Playing with bycrypt og value was 12
     salt = bcrypt.gensalt(rounds=12)
     
     # Hash the password

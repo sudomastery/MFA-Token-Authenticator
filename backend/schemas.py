@@ -75,6 +75,8 @@ class UserLogin(BaseModel):
     Schema for user login requests.
     
     Can login with either username or email + password.
+
+    # If MFA is enabled, also requires mfa_token
     """
     username: str = Field(
         ...,
@@ -83,6 +85,15 @@ class UserLogin(BaseModel):
     password: str = Field(
         ...,
         examples=["SecurePass123!"]
+    )
+
+    mfa_token: Optional[str] = Field(
+        None,
+        min_length=6,
+        max_length=6,
+        pattern="^[0-9]{6}$",
+        description="6-digit MFA token (required if MFA is enabled)",
+        examples=["123456"]
     )
 
 

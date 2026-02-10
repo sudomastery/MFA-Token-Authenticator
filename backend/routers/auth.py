@@ -118,6 +118,37 @@ def login_user(user_credentials: UserLogin, db: Session = Depends(get_db)):
     
     # TODO: If MFA enabled, require MFA token verification
     # For now, we'll skip MFA and just issue tokens
+
+        # Check if MFA is enabled
+    if user.mfa_enabled:
+        # MFA is enabled - token is required
+        if not user_credentials.mfa_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA token required. Please provide mfa_token in request body.",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        
+        # Get user's MFA secret
+        mfa_secret = db.query(MFASecret).filter(
+            MFASecret.user_id == user.id,
+            MFASecret.is_active == True
+        ).first()
+        
+        if not mfa_secret:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="MFA configuration error. Please contact support."
+            )
+        
+        # Decrypt and verify MFA token
+        decrypted_secret = decrypt_secret(mfa_secret.secret_key)
+        if not verify_totp_token(decrypted_secret, user_credentials.mfa_token):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA token",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
     
     # Create token payload
     token_data = {
@@ -144,26 +175,75 @@ def get_current_user(
                      
     ) -> User:
     """
-    Helper function: Extract user from JWT token.
+    FastApi Dependency: Extract and validate user from Authorization header
 
     Used by protected MFA endpoints to identify the user.
 
-    YOU NEED TO CONTINUE BUILDING THIS FUNCTION
+    How Authorization headers work:
+    Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                   ↑      ↑
+                  scheme  token
+    
+    Process:
+    1. Check Authorization header exists
+    2. Verify format is "Bearer <token>"
+    3. Extract token part
+    4. Decode and validate JWT
+    5. Find user in database
+    6. Return user object
+    
+    Args:
+        authorization: Authorization header (auto-extracted by FastAPI)
+        db: Database session (injected)
+        
+    Returns:
+        User object if valid token
+        
+    Raises:
+        HTTPException 401: Missing, invalid, or expired token
+        HTTPException 404: User not found
     """ 
-    payload = decode_access_token(token)
-    if not payload:
+
+    # Check if authorization header was provided
+    if not authorization:
         raise HTTPException(
-            status_code = status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header missing", 
+            headers={"WWW-Authenticate": "Bearer"}
+
         )
     
+    #split "bearer token" into parts
+    parts = authorization.split()
+
+    #Validate format: exactly 2 parts, first is 'Bearer'
+    if len(parts) !=2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format. Expected: Bearer <token>",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    #Extract token (second part)
+    token = parts[1]
+
+    #Decode JWT token
+    payload = decode_access_token(token)
+    if not payload:
+            raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    #Extract user ID from token payload
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail = "Invalid or expired token"
+            detail = "Invalid token payload: missing user ID", 
+            headers={"WWW-Authenticate": "Bearer"}
         )
-    
+    #Find user in database
     user = db.query(User).filter(User.id == int(user_id)).first()
     if not user:
         raise HTTPException(
@@ -174,87 +254,248 @@ def get_current_user(
 
 @router.post("/mfa/setup", response_model=MFASetupResponse)
 def setup_mfa(
-    authorization: str = Depends(lambda: None),  # extract manually for learning
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    setup mfa for authenticated user
-
+    Setup MFA for authenticated user.
+    
     Process:
-    1. Verify the user is logged in (check JWT token)
-    2. Generate random TOPP secret
-    3. Create QR code for authenticator app
-    4. Store encrypted secret in database (not verified yet)
-    5. Return QR code and secret to user
-
-    MFA is not active until user verifies with /mfa/verify
-
+    1. User must be logged in (JWT validated by get_current_user dependency)
+    2. Generate random TOTP secret (Base32 encoded)
+    3. Encrypt secret before storing in database
+    4. Create QR code for authenticator apps
+    5. Generate 8 backup codes for emergency access
+    6. Store encrypted secret in database (not active yet)
+    7. Return secret, QR code, and backup codes
+    
+    Note: MFA is NOT active until user verifies with POST /mfa/verify
+    This prevents users from locking themselves out if they make mistakes.
+    
     Headers Required:
-    Authorization: Bearer <access_token>
+        Authorization: Bearer <access_token>
         
     Returns:
-        MFASetupResponse: QR code, secret, backup codes
-    """
-    #implement a simpler version in production implement FASTAPI's OAuth2PasswordBearer
+        MFASetupResponse: {
+            secret: "JBSWY3DPEHPK3PXP",  # Base32 TOTP secret
+            qr_code: "data:image/png;base64,...",  # QR code image
+            backup_codes: ["A1B2C3D4", ...]  # 8 emergency codes
+        }
 
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="MFA setup endpoint not yet implemented"
-    )
+    """
+    # Step 1: Generate TOTP secret
+    totp_secret = generate_totp_secret()
+
+    #Step 2: Encrypt for database storage
+    encrypted_secret = encrypt_secret(totp_secret)
+
+    #step 3: Generate the QR code
+    # Format: otpauth://totp/MFA%20Auth:username?secret=XXX&issuer=MFA%20Auth
+    qr_code = generate_qr_code(totp_secret, current_user.username)
+
+    #Step 4: Generate backup codes
+    # secrets.token_hex(4) = 8 random hex characters
+    # Use .upper() to make them easier to read 
+    backup_codes = [secrets.token_hex(4).upper() for _ in range(8)]
+
+    #step 5: Check is user already has MFA secret
+    existing_mfa = db.query(MFASecret).filter(
+        MFASecret.user_id == current_user.id
+    ).first()
+
+    if existing_mfa:
+        #User is resetting MFA for example device is lost
+        # Update existing record
+        existing_mfa.secret_key = encrypted_secret
+        existing_mfa.is_active = False  # Not active until verified
+        existing_mfa.verified_at = None  # Clear previous verification
+        existing_mfa.created_at = datetime.now(timezone.utc)  # New timestamp
+    else:
+        #First time MFA Setup - create new record
+        new_mfa = MFASecret(
+            user_id=current_user.id,
+            secret_key=encrypted_secret,
+            is_active=False,  # Not active until verified
+            verified_at=None,
+            created_at=datetime.now(timezone.utc)
+
+        )
+        db.add(new_mfa)
+        # Save to database
+        db.commit()
+
+        # Return setup data
+        # This is the only secret that is shown unencrypted
+        # User must save it or scan qr code now
+
+        return {
+        "secret": totp_secret,  # Show once! User should save this
+        "qr_code": qr_code,     # Base64 image for scanning
+        "backup_codes": backup_codes  # Emergency codes (TODO: store hashed in production)
+        }
+
+
+
 
 @router.post("/mfa/verify")
 def verify_mfa(
     mfa_data: MFAVerify,
-    authorization: str = Depends(lambda: None),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Verify and activate MFA
-
+    Verify and activate MFA.
+    
+    This is the critical step that actually enables MFA. User must prove
+    they successfully set up their authenticator app by providing a valid code.
+    
     Process:
-    1. get user;s pending MFA secret from the database
-    2. Verify the 6 digits token from authenticator app
-    2. if valid mark MFA as verfied and active
-    4. Update user.mfa_enabled = True
-
+    1. Get user's pending MFA secret from database
+    2. Decrypt the secret (it's stored encrypted)
+    3. Verify the 6-digit token from authenticator app
+    4. If valid, mark MFA as verified and active
+    5. Update user.mfa_enabled = True
+    
+    Why this two-step process (setup → verify)?
+    - Prevents users from locking themselves out
+    - Confirms they saved the secret or scanned QR correctly
+    - Best practice for MFA implementation
+    
     Headers Required:
         Authorization: Bearer <access_token>
         
     Request Body:
-        {"token": "123456"}
+        {"token": "123456"}  # 6-digit code from authenticator app
         
     Returns:
-        Success message
+        {"message": "MFA enabled successfully", "mfa_enabled": true}
+        
+    Raises:
+        HTTPException 400: No MFA setup found (must call /mfa/setup first)
+        HTTPException 401: Invalid token (wrong code or expired)
     """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="MFA verify endpoint - implementation next"
-    )
+    mfa_secret = db.query(MFASecret).filter(
+        MFASecret.user_id == current_user.id
+    ).first()
+    
+    if not mfa_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA not set up. Please call POST /api/auth/mfa/setup first"
+        )
+
+
+    #step 2: Decrypt the secret
+    decrypted_secret = decrypt_secret(mfa_secret.secret_key)
+    
+    #Step 3: Verify the token
+    # Verify totp token checks current time window +-30 seconds
+    
+    if not verify_totp_token(decrypted_secret, mfa_data.token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid MFA token. Please check your authenticator app and try again."
+
+        )
+    #Step 4: Activate MFA
+    #Mark secret as active and verified
+    mfa_secret.is_active = True
+    mfa_secret.verified_at = datetime.now(timezone.utc)
+
+    #Enable MFA for user account
+    current_user.mfa_enabled = True
+    current_user.updated_at = datetime.now(timezone.utc)
+
+    #save changes
+    db.commit()
+
+    # Success response
+    return {
+        "message": "MFA enabled successfully",
+        "mfa_enabled": True
+    }
+
 
 @router.post("/mfa/disable")
 def disable_mfa(
     mfa_data: MFAVerify,
-    authorization: str = Depends(lambda: None),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-   Disable MFA for authenticated user
-
-   Process:
-   1. Verify user's current MFA token (prove they have access)
-   2. Delete MFA secret from database
-   3. Set user.mfa_enabled = False
-
-   Headers Required:
+    Disable MFA for authenticated user.
+    
+    Security-critical endpoint: Requires valid MFA token to disable.
+    This prevents attackers who steal JWT tokens from disabling MFA.
+    
+    Process:
+    1. Verify user has MFA enabled
+    2. Get MFA secret from database
+    3. Verify current MFA token (prove they have authenticator access)
+    4. Delete MFA secret from database
+    5. Set user.mfa_enabled = False
+    
+    Why require MFA token to disable?
+    - Prevents unauthorized disabling if JWT is stolen
+    - User must have physical access to authenticator
+    - Defense-in-depth security principle
+    
+    Headers Required:
         Authorization: Bearer <access_token>
         
     Request Body:
         {"token": "123456"}  # Current valid token required
         
     Returns:
-        Success message
+        {"message": "MFA disabled successfully", "mfa_enabled": false}
+        
+    Raises:
+        HTTPException 400: MFA not enabled for this account
+        HTTPException 401: Invalid token (wrong code)
     """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="MFA disable endpoint - implementation next"
-    )
+    # Step 1: Check if MFA is enabled
+    if not current_user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA is not enabled for this account"
+        )
+    
+    # Step 2: Get user's MFA secret
+    mfa_secret = db.query(MFASecret).filter(
+        MFASecret.user_id == current_user.id
+    ).first()
+    
+    if not mfa_secret:
+        # Edge case: user.mfa_enabled is True but no secret exists
+        # This shouldn't happen, but handle gracefully
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA secret not found"
+        )
+    
+    # Step 3: Decrypt and verify token
+    # User must prove they have access to authenticator
+    decrypted_secret = decrypt_secret(mfa_secret.secret_key)
+    
+    if not verify_totp_token(decrypted_secret, mfa_data.token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid MFA token. Cannot disable MFA without valid token."
+        )
+    
+    # Step 4: Disable MFA
+    # Delete the secret from database
+    db.delete(mfa_secret)
+    
+    # Update user record
+    current_user.mfa_enabled = False
+    current_user.updated_at = datetime.now(timezone.utc)
+    
+    # Save changes
+    db.commit()
+    
+    # Success response
+    return {
+        "message": "MFA disabled successfully",
+        "mfa_enabled": False
+    }
