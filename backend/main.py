@@ -1,7 +1,9 @@
 # File: /home/roy/dev/personal/MFA-Token-Authenticator/backend/main.py
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from database import init_db
 from routers import auth
@@ -51,13 +53,73 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",  # React dev server
         "http://localhost:5173",  # Vite dev server (alternative)
+        "http://localhost:8080",  # Vite dev server (actual port)
+        "http://localhost:8081",  # Vite dev server (backup port)
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:8081"
     ],
     allow_credentials=True,  # Allow cookies and authorization headers
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
     allow_headers=["*"],  # Allow all headers
 )
+
+# Add request validation error handler for debugging
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Log validation errors for debugging and add CORS headers"""
+    try:
+        body = await request.body()
+        print(f"\n❌ VALIDATION ERROR on {request.method} {request.url.path}")
+        print(f"Request body: {body.decode('utf-8') if body else 'empty'}")
+        
+        # Safely serialize errors by converting bytes to string
+        errors = []
+        for error in exc.errors():
+            error_dict = dict(error)
+            # Convert bytes input to string if present
+            if 'input' in error_dict and isinstance(error_dict['input'], bytes):
+                error_dict['input'] = error_dict['input'].decode('utf-8', errors='replace')
+            errors.append(error_dict)
+        
+        print(f"Validation errors: {errors}\n")
+    except Exception as e:
+        print(f"Error processing validation exception: {e}")
+        errors = [{"type": "validation_error", "msg": "Request validation failed"}]
+    
+    # Create simplified error response
+    error_messages = []
+    for error in errors:
+        field = error.get('loc', ['unknown'])[-1] if error.get('loc') else 'unknown'
+        msg = error.get('msg', 'Validation error')
+        error_messages.append(f"{field}: {msg}")
+    
+    # Create response with CORS headers
+    response = JSONResponse(
+        status_code=422,
+        content={
+            "detail": ", ".join(error_messages) if error_messages else "Validation failed",
+            "errors": errors
+        },
+    )
+    
+    # Add CORS headers to error response
+    origin = request.headers.get("origin")
+    if origin in [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:8081"
+    ]:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 
 @app.get("/")

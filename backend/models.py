@@ -40,6 +40,7 @@ class User(Base):
     # cascade="all, delete-orphan" - delete MFA secret when user is deleted
 
     mfa_secret = relationship("MFASecret", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    backup_codes = relationship("BackupCode", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         """
@@ -81,3 +82,39 @@ class MFASecret(Base):
     def __repr__(self):
         """String representation of MFASecret object (for debugging)"""
         return f"<MFASecret(id={self.id}, user_id={self.user_id}, is_active={self.is_active})>"
+
+
+class BackupCode(Base):
+    """
+    Model stores backup/recovery codes for MFA.
+    
+    Each user gets 8 backup codes when they set up MFA.
+    Each code can only be used once.
+    Codes are hashed before storage (like passwords).
+    """
+    __tablename__ = "backup_codes"
+    
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Foreign key - links to users table
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Hashed backup code (using bcrypt like passwords)
+    code_hash = Column(String(255), nullable=False)
+    
+    # Has this code been used?
+    used = Column(Boolean, default=False, nullable=False)
+    
+    # When was it used?
+    used_at = Column(DateTime, nullable=True)
+    
+    # When was this code created?
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    
+    # Relationship - links back to User
+    user = relationship("User", back_populates="backup_codes")
+    
+    def __repr__(self):
+        """String representation for debugging"""
+        return f"<BackupCode(id={self.id}, user_id={self.user_id}, used={self.used})>"

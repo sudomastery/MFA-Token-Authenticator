@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User, MFASecret
+from models import User, MFASecret, BackupCode
 from schemas import UserRegister, UserLogin, Token, UserResponse, MFASetupResponse, MFAVerify
 from auth import get_password_hash, verify_password, create_access_token, create_refresh_token, decode_access_token
 from mfa import generate_totp_secret, encrypt_secret, decrypt_secret, generate_qr_code, verify_totp_token
 from datetime import datetime, timezone
 import secrets
+import bcrypt
 from typing import Optional
 
 # Create router with prefix and tags
@@ -41,6 +42,20 @@ def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
     # Check if username already taken
     existing_user = db.query(User).filter(User.username == user_data.username).first()
     if existing_user:
+        # Check if user has incomplete MFA setup (registered but never completed MFA)
+        if not existing_user.mfa_enabled:
+            incomplete_secret = db.query(MFASecret).filter(
+                MFASecret.user_id == existing_user.id,
+                MFASecret.is_active == False
+            ).first()
+            if incomplete_secret:
+                # User is in limbo state - has incomplete MFA setup
+                # Allow them to try again by directing them to complete MFA
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Username already registered with incomplete MFA setup. Please login to complete MFA setup."
+                )
+        
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered"
@@ -49,6 +64,18 @@ def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
     # Check if email already taken
     existing_email = db.query(User).filter(User.email == user_data.email).first()
     if existing_email:
+        # Check for incomplete MFA setup on email too
+        if not existing_email.mfa_enabled:
+            incomplete_secret = db.query(MFASecret).filter(
+                MFASecret.user_id == existing_email.id,
+                MFASecret.is_active == False
+            ).first()
+            if incomplete_secret:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email already registered with incomplete MFA setup. Please login to complete MFA setup."
+                )
+        
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
@@ -161,10 +188,27 @@ def login_user(user_credentials: UserLogin, db: Session = Depends(get_db)):
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token({"sub": str(user.id)})
     
+    # Check if user has incomplete MFA setup (secret exists but not active)
+    incomplete_mfa = False
+    if not user.mfa_enabled:
+        incomplete_secret = db.query(MFASecret).filter(
+            MFASecret.user_id == user.id,
+            MFASecret.is_active == False
+        ).first()
+        if incomplete_secret:
+            incomplete_mfa = True
+    
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "mfa_enabled": user.mfa_enabled,
+            "incomplete_mfa": incomplete_mfa
+        }
     }
 
 # ======================MFA Endpoints ============
@@ -310,6 +354,9 @@ def setup_mfa(
         existing_mfa.is_active = False  # Not active until verified
         existing_mfa.verified_at = None  # Clear previous verification
         existing_mfa.created_at = datetime.now(timezone.utc)  # New timestamp
+        
+        # Delete old backup codes
+        db.query(BackupCode).filter(BackupCode.user_id == current_user.id).delete()
     else:
         #First time MFA Setup - create new record
         new_mfa = MFASecret(
@@ -321,18 +368,31 @@ def setup_mfa(
 
         )
         db.add(new_mfa)
-        # Save to database
-        db.commit()
+    
+    # Store hashed backup codes in database
+    for code in backup_codes:
+        # Hash backup code like a password
+        code_hash = bcrypt.hashpw(code.encode('utf-8'), bcrypt.gensalt(rounds=12)).decode('utf-8')
+        backup_code_record = BackupCode(
+            user_id=current_user.id,
+            code_hash=code_hash,
+            used=False,
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(backup_code_record)
+    
+    # Save to database
+    db.commit()
 
-        # Return setup data
-        # This is the only secret that is shown unencrypted
-        # User must save it or scan qr code now
+    # Return setup data
+    # This is the only time backup codes are shown unencrypted
+    # User must save them now
 
-        return {
+    return {
         "secret": totp_secret,  # Show once! User should save this
         "qr_code": qr_code,     # Base64 image for scanning
-        "backup_codes": backup_codes  # Emergency codes (TODO: store hashed in production)
-        }
+        "backup_codes": backup_codes  # Emergency codes - save these!
+    }
 
 
 
@@ -374,40 +434,77 @@ def verify_mfa(
         HTTPException 400: No MFA setup found (must call /mfa/setup first)
         HTTPException 401: Invalid token (wrong code or expired)
     """
+    # Debug logging
+    print(f"DEBUG: Received MFA verify request for user {current_user.username}")
+    print(f"DEBUG: Token received: '{mfa_data.token}' (type: {type(mfa_data.token)}, length: {len(mfa_data.token)})")
+    
+    # Ensure token is string and clean
+    token = str(mfa_data.token).strip()
+    print(f"DEBUG: Cleaned token: '{token}' (length: {len(token)})")
+    
+    # Validate token format
+    if len(token) != 6 or not token.isdigit():
+        print(f"DEBUG: Token validation failed - not 6 digits")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA token must be exactly 6 digits"
+        )
+    
     mfa_secret = db.query(MFASecret).filter(
         MFASecret.user_id == current_user.id
     ).first()
     
     if not mfa_secret:
+        print(f"DEBUG: No MFA secret found for user {current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="MFA not set up. Please call POST /api/auth/mfa/setup first"
         )
 
-
-    #step 2: Decrypt the secret
-    decrypted_secret = decrypt_secret(mfa_secret.secret_key)
+    print(f"DEBUG: Found MFA secret, is_active={mfa_secret.is_active}")
     
-    #Step 3: Verify the token
-    # Verify totp token checks current time window +-30 seconds
+    # Step 2: Decrypt the secret
+    try:
+        decrypted_secret = decrypt_secret(mfa_secret.secret_key)
+        print(f"DEBUG: Successfully decrypted secret")
+    except Exception as e:
+        print(f"DEBUG: Failed to decrypt secret: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to decrypt MFA secret"
+        )
     
-    if not verify_totp_token(decrypted_secret, mfa_data.token):
+    # Step 3: Verify the token
+    print(f"DEBUG: Verifying TOTP token...")
+    if not verify_totp_token(decrypted_secret, token):
+        print(f"DEBUG: TOTP verification failed")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid MFA token. Please check your authenticator app and try again."
-
         )
-    #Step 4: Activate MFA
-    #Mark secret as active and verified
+    
+    print(f"DEBUG: TOTP verification successful!")
+    
+    # Step 4: Activate MFA
+    # Mark secret as active and verified
     mfa_secret.is_active = True
     mfa_secret.verified_at = datetime.now(timezone.utc)
 
-    #Enable MFA for user account
+    # Enable MFA for user account
     current_user.mfa_enabled = True
     current_user.updated_at = datetime.now(timezone.utc)
 
-    #save changes
-    db.commit()
+    # Save changes
+    try:
+        db.commit()
+        print(f"DEBUG: Successfully committed MFA activation for user {current_user.username}")
+    except Exception as e:
+        print(f"DEBUG: Failed to commit: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save MFA activation"
+        )
 
     # Success response
     return {
@@ -499,3 +596,69 @@ def disable_mfa(
         "message": "MFA disabled successfully",
         "mfa_enabled": False
     }
+
+@router.post("/mfa/verify-backup")
+def verify_backup_code(
+    backup_code: str,
+    username: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Verify backup code for MFA recovery.
+    
+    Used when user loses access to authenticator app.
+    Each backup code can only be used once.
+    """
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    backup_codes = db.query(BackupCode).filter(
+        BackupCode.user_id == user.id,
+        BackupCode.used == False
+    ).all()
+    
+    if not backup_codes:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No valid backup codes available"
+        )
+    
+    code_matched = False
+    matched_code = None
+    
+    for stored_code in backup_codes:
+        if bcrypt.checkpw(backup_code.encode('utf-8'), stored_code.code_hash.encode('utf-8')):
+            code_matched = True
+            matched_code = stored_code
+            break
+    
+    if not code_matched:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid backup code")
+    
+    matched_code.used = True
+    matched_code.used_at = datetime.now(timezone.utc)
+    db.commit()
+    
+    temp_token = create_access_token(user_id=user.id, username=user.username, mfa_enabled=user.mfa_enabled, expires_minutes=10)
+    
+    return {
+        "message": "Backup code verified successfully",
+        "temp_token": temp_token,
+        "user": {"username": user.username, "email": user.email}
+    }
+
+
+@router.post("/mfa/reset")
+def reset_mfa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Reset MFA after backup code verification."""
+    mfa_secret = db.query(MFASecret).filter(MFASecret.user_id == current_user.id).first()
+    if mfa_secret:
+        db.delete(mfa_secret)
+    
+    db.query(BackupCode).filter(BackupCode.user_id == current_user.id).delete()
+    current_user.mfa_enabled = False
+    current_user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    
+    return {"message": "MFA reset successfully. Please set up MFA again.", "mfa_enabled": False}

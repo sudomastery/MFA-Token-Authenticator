@@ -4,10 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AuthLayout from "@/components/AuthLayout";
-// 🧪 TEST MODE — swap `mockApi` back to `api` from "@/lib/api" during integration
-import { mockApi as api } from "@/lib/mock-api";
-import TestBanner from "@/components/TestBanner";
-import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
+import { useAuth } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -22,12 +20,31 @@ const Register = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await api.register(form);
-      setAuth(res.access_token, res.user);
-      toast({ title: "Account created!", description: "Welcome aboard." });
+      // First register the user
+      await api.register(form);
+      
+      // Then log them in automatically
+      const loginRes = await api.login({
+        username: form.username,
+        password: form.password,
+      });
+      
+      setAuth(loginRes.access_token, loginRes.user);
+      toast({ title: "Account created!", description: "Welcome aboard. Let's set up MFA." });
       navigate("/mfa-setup");
     } catch (err: any) {
-      toast({ title: "Registration failed", description: err.message, variant: "destructive" });
+      // Check if this is a limbo state user (409 Conflict)
+      if (err.message && err.message.includes("incomplete MFA setup")) {
+        toast({ 
+          title: "Account exists", 
+          description: "Please login to complete your MFA setup.", 
+          variant: "default" 
+        });
+        // Redirect to login page after showing message
+        setTimeout(() => navigate("/login"), 2000);
+      } else {
+        toast({ title: "Registration failed", description: err.message, variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }
@@ -35,8 +52,6 @@ const Register = () => {
 
   return (
     <AuthLayout title="Create an account" subtitle="Get started with secure authentication">
-      {/* 🧪 TEST MODE — Remove <TestBanner /> during integration */}
-      <TestBanner />
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="username">Username</Label>

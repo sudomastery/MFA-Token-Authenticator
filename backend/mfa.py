@@ -61,7 +61,7 @@ def decrypt_secret(encrypted_secret: str) -> str:
     decrypted = cipher.decrypt(encrypted_bytes)
     return decrypted.decode('utf-8')
 
-def generate_qr_code(secret: str, username: str, issuer: str = "MFA Auth") -> str:
+def generate_qr_code(secret: str, username: str, issuer: str = "MFA POC") -> str:
     """
     Generate QR code for authenticator apps.
     

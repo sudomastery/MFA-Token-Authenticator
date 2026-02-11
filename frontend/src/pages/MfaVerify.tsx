@@ -4,10 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AuthLayout from "@/components/AuthLayout";
-// 🧪 TEST MODE — swap `mockApi` back to `api` from "@/lib/api" during integration
-import { mockApi as api } from "@/lib/mock-api";
-import TestBanner from "@/components/TestBanner";
-import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
+import { useAuth } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ShieldCheck } from "lucide-react";
 
@@ -51,8 +49,6 @@ const MfaVerify = () => {
         )}
       </div>
 
-      {/* 🧪 TEST MODE — Remove <TestBanner /> during integration */}
-      <TestBanner />
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="mfa-token">6-digit code</Label>

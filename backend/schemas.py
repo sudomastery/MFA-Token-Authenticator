@@ -95,6 +95,16 @@ class UserLogin(BaseModel):
         description="6-digit MFA token (required if MFA is enabled)",
         examples=["123456"]
     )
+    
+    @field_validator('mfa_token', mode='before')
+    @classmethod
+    def coerce_mfa_token_to_string(cls, v):
+        """Convert MFA token to string if it's a number."""
+        if v is None:
+            return v
+        if isinstance(v, int):
+            return str(v)
+        return v
 
 
 # ============= Token Responses =============
@@ -116,6 +126,10 @@ class Token(BaseModel):
     token_type: str = Field(
         default="bearer",
         description="Token type (always 'bearer' for JWT)"
+    )
+    user: dict = Field(
+        ...,
+        description="User information including username, email, and MFA status"
     )
 
 
@@ -188,6 +202,14 @@ class MFAVerify(BaseModel):
         pattern="^[0-9]{6}$",  # Exactly 6 digits
         examples=["123456"]
     )
+    
+    @field_validator('token', mode='before')
+    @classmethod
+    def coerce_token_to_string(cls, v):
+        """Convert token to string if it's a number."""
+        if isinstance(v, int):
+            return str(v)
+        return v
 
 
 class MFAStatus(BaseModel):

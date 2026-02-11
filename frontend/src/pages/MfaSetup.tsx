@@ -4,15 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AuthLayout from "@/components/AuthLayout";
-// 🧪 TEST MODE — swap `mockApi` back to `api` from "@/lib/api" during integration
-import { mockApi as api } from "@/lib/mock-api";
-import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
+import { useAuth } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Copy, Check, QrCode } from "lucide-react";
 
 const MfaSetup = () => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [secret, setSecret] = useState("");
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [setupLoading, setSetupLoading] = useState(true);
@@ -31,6 +31,7 @@ const MfaSetup = () => {
         const res = await api.mfaSetup(authToken);
         setQrCode(res.qr_code);
         setSecret(res.secret);
+        setBackupCodes(res.backup_codes || []);
       } catch (err: any) {
         toast({ title: "MFA Setup failed", description: err.message, variant: "destructive" });
       } finally {
@@ -50,9 +51,29 @@ const MfaSetup = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await api.mfaVerify({ token }, authToken!);
-      setAuth(res.access_token, res.user);
-      toast({ title: "MFA Enabled!", description: "Your account is now secured with 2FA." });
+      // Ensure token is exactly 6 digits and trimmed
+      const cleanToken = token.trim();
+      console.log('Verifying MFA with token:', cleanToken, 'length:', cleanToken.length);
+      
+      if (cleanToken.length !== 6 || !/^\d{6}$/.test(cleanToken)) {
+        toast({ 
+          title: "Invalid code", 
+          description: "Please enter a valid 6-digit code", 
+          variant: "destructive" 
+        });
+        setLoading(false);
+        return;
+      }
+      
+      console.log('Sending verify request with payload:', { token: cleanToken });
+      await api.mfaVerify({ token: cleanToken }, authToken!);
+      
+      // Update user in auth context to reflect MFA is now enabled and store backup codes
+      if (user) {
+        setAuth(authToken!, { ...user, mfa_enabled: true }, backupCodes);
+      }
+      
+      toast({ title: "MFA Enabled!", description: "Your account is now secured with 2FA. Save your backup codes!" });
       navigate("/dashboard");
     } catch (err: any) {
       toast({ title: "Verification failed", description: err.message, variant: "destructive" });
@@ -119,10 +140,6 @@ const MfaSetup = () => {
             Verify & Enable MFA
           </Button>
         </form>
-
-        <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => navigate("/dashboard")}>
-          Skip for now
-        </Button>
       </div>
     </AuthLayout>
   );
