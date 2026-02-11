@@ -110,7 +110,10 @@ const Login = () => {
         variant: "default" 
       });
 
-      // Close modal and navigate to MFA setup
+      // Set temp token and user in auth to allow access to MFA setup page
+      setAuth(res.temp_token, res.user);
+
+      // Close modal and navigate directly to MFA setup
       setShowBackupCodeModal(false);
       setBackupCodeForm({ username: "", backupCode: "" });
       navigate("/mfa-setup");

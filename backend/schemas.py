@@ -220,6 +220,26 @@ class MFAStatus(BaseModel):
     mfa_verified: bool
 
 
+class BackupCodeVerify(BaseModel):
+    """
+    Schema for backup code verification requests.
+    
+    Used for MFA recovery when user loses authenticator.
+    """
+    username: str = Field(
+        ...,
+        min_length=3,
+        max_length=50,
+        description="Username of the account"
+    )
+    backup_code: str = Field(
+        ...,
+        min_length=8,
+        max_length=8,
+        description="8-character backup code"
+    )
+
+
 # ============= Generic Responses =============
 
 class MessageResponse(BaseModel):

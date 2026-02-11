@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from database import get_db
 from models import User, MFASecret, BackupCode
-from schemas import UserRegister, UserLogin, Token, UserResponse, MFASetupResponse, MFAVerify
+from schemas import UserRegister, UserLogin, Token, UserResponse, MFASetupResponse, MFAVerify, BackupCodeVerify
 from auth import get_password_hash, verify_password, create_access_token, create_refresh_token, decode_access_token
 from mfa import generate_totp_secret, encrypt_secret, decrypt_secret, generate_qr_code, verify_totp_token
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import secrets
 import bcrypt
 from typing import Optional
@@ -599,8 +599,7 @@ def disable_mfa(
 
 @router.post("/mfa/verify-backup")
 def verify_backup_code(
-    backup_code: str,
-    username: str,
+    backup_data: BackupCodeVerify,
     db: Session = Depends(get_db)
 ):
     """
@@ -609,7 +608,7 @@ def verify_backup_code(
     Used when user loses access to authenticator app.
     Each backup code can only be used once.
     """
-    user = db.query(User).filter(User.username == username).first()
+    user = db.query(User).filter(User.username == backup_data.username).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -628,7 +627,8 @@ def verify_backup_code(
     matched_code = None
     
     for stored_code in backup_codes:
-        if bcrypt.checkpw(backup_code.encode('utf-8'), stored_code.code_hash.encode('utf-8')):
+        # code_hash is stored as string, backup_code needs to be bytes
+        if bcrypt.checkpw(backup_data.backup_code.encode('utf-8'), stored_code.code_hash.encode('utf-8')):
             code_matched = True
             matched_code = stored_code
             break
@@ -636,11 +636,18 @@ def verify_backup_code(
     if not code_matched:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid backup code")
     
+    # Mark code as used
     matched_code.used = True
     matched_code.used_at = datetime.now(timezone.utc)
     db.commit()
     
-    temp_token = create_access_token(user_id=user.id, username=user.username, mfa_enabled=user.mfa_enabled, expires_minutes=10)
+    # Create temporary token for MFA reset (10 minutes)
+    token_data = {
+        "sub": str(user.id),
+        "username": user.username,
+        "mfa_enabled": user.mfa_enabled
+    }
+    temp_token = create_access_token(token_data, expires_delta=timedelta(minutes=10))
     
     return {
         "message": "Backup code verified successfully",
