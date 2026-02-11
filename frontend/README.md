@@ -1,73 +1,99 @@
-# Welcome to your Lovable project
+# MFA Token Authenticator
 
-## Project info
+A full-stack multi-factor authentication (MFA) application with TOTP support.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Project Structure
 
-## How can I edit this code?
+- **Backend**: FastAPI + PostgreSQL + SQLAlchemy
+- **Frontend**: React + TypeScript + Vite + Zustand
 
-There are several ways of editing your application.
+## Features
 
-**Use Lovable**
+- User registration and authentication
+- TOTP-based MFA with QR code generation
+- Backup codes for account recovery
+- JWT token-based sessions
+- Secure password hashing with bcrypt
+- Encrypted MFA secrets using Fernet
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Setup
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js & npm - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- Python 3.11+
+- PostgreSQL 18+
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+### Backend Setup
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Navigate to backend directory
+cd backend
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Step 3: Install the necessary dependencies.
-npm i
+# Install dependencies
+pip install -r requirements.txt
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Set up environment variables (create .env file)
+# DATABASE_URL=postgresql://user:password@localhost/dbname
+# SECRET_KEY=your-secret-key
+# ALGORITHM=HS256
+# ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Run the server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Frontend Setup
+
+```sh
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The frontend will be available at `http://localhost:8080`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Technologies
 
-**Use GitHub Codespaces**
+### Backend
+- FastAPI
+- PostgreSQL
+- SQLAlchemy ORM
+- Pydantic v2
+- PyOTP (TOTP)
+- bcrypt (password hashing)
+- Fernet (secret encryption)
+- JWT tokens
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
+### Frontend
 - Vite
 - TypeScript
 - React
+- Zustand (state management)
 - shadcn-ui
 - Tailwind CSS
+- React Router
 
-## How can I deploy this project?
+## API Endpoints
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login with MFA
+- `POST /api/auth/mfa/setup` - Generate MFA QR code
+- `POST /api/auth/mfa/verify` - Verify and activate MFA
+- `POST /api/auth/mfa/verify-backup` - Verify backup code
+- `POST /api/auth/mfa/reset` - Reset MFA
+- `POST /api/auth/mfa/disable` - Disable MFA
 
-## Can I connect a custom domain to my Lovable project?
+## License
 
-Yes, you can!
+MIT
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
