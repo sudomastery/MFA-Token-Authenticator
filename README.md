@@ -1,47 +1,196 @@
 # MFA Token Authenticator
 
-A secure Multi-Factor Authentication (MFA) system implementing Time-based One-Time Passwords (TOTP) with support for popular authenticator apps like Microsoft Authenticator, Google Authenticator, and Ente Auth.
-
-## 📚 Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [Understanding Authentication Fundamentals](#understanding-authentication-fundamentals)
-3. [What is Multi-Factor Authentication (MFA)?](#what-is-multi-factor-authentication-mfa)
-4. [Deep Dive: TOTP (Time-based One-Time Password)](#deep-dive-totp-time-based-one-time-password)
-5. [The Complete MFA Flow](#the-complete-mfa-flow)
-6. [Technical Architecture](#technical-architecture)
-7. [Security Considerations](#security-considerations)
-8. [Technologies & Stack](#technologies--stack)
-9. [Implementation Plan](#implementation-plan)
-10. [Setup & Installation](#setup--installation)
-11. [API Documentation](#api-documentation)
-12. [Learning Resources](#learning-resources)
+A complete Multi-Factor Authentication (MFA) module that enables users to securely **register**, **verify**, and **recover** their accounts using Time-based One-Time Passwords (TOTP). Works seamlessly with **Microsoft Authenticator**, **Ente Auth**, **Google Authenticator**, and any other TOTP-compatible authenticator application.
 
 ---
 
-## Project Overview
+## User Flow Showcase
 
-A complete Multi-Factor Authentication system built from the ground up, providing:
+### 1. Login and Registration
+New users can register by providing a username, email, and secure password. Existing users can log in with their credentials and complete MFA verification using their authenticator app. A backup code recovery option is available for users who've lost access to their authenticator device.
 
-- TOTP-based authentication with industry-standard authenticator apps
-- Secure token generation and validation
-- QR code generation for easy authenticator app setup
-- REST API for user authentication and MFA management
-- Encrypted storage of MFA secrets
+![Login and Registration](screenshots/login_and_authentication.png)
 
-### Features
+### 2. MFA Setup
+After registration or when enabling MFA, users scan a QR code with their authenticator app and receive backup recovery codes for emergency access.
 
-✅ Complete MFA authentication system with TOTP support  
-✅ Compatible with Microsoft Authenticator, Google Authenticator, Ente Auth, and other TOTP-based apps  
-✅ Secure password hashing with bcrypt  
-✅ JWT-based session management  
-✅ QR code generation for seamless authenticator app pairing  
-✅ Encrypted secret storage using Fernet (AES-256)  
-✅ Account recovery with backup codes  
+![MFA Setup - QR Code](screenshots/mfa_setup.png)
+
+### 3. Backup Codes
+Users receive 8 one-time backup codes to save securely. These codes can be used to regain access if the authenticator device is lost.
+
+![Backup Codes](screenshots/backup_codes.png)
+
+### 4. MFA Verification
+After successfuly entering the MFA users are redirected to the protected resource they have access to.
+
+![MFA Verification](screenshots/security_dashboard.png)
 
 ---
 
-## Understanding Authentication Fundamentals
+## What This Project Does
+
+This MFA module provides:
+
+- **Complete Registration Flow** - Create account with secure password hashing
+- **MFA Enrollment** - Generate TOTP secrets and QR codes for authenticator apps
+- **Two-Factor Login** - Verify password + TOTP code for enhanced security
+- **Account Recovery** - Use backup codes to regain access if authenticator device is lost
+- **MFA Reset** - Reset and re-enroll MFA after recovery
+- **Universal Compatibility** - Works with Microsoft Authenticator, Ente Auth, Google Authenticator, and any TOTP-based app
+
+### Key Features
+
+**Secure by Design**
+- Password hashing with bcrypt (12 rounds)
+- Fernet encryption (AES-256) for TOTP secrets at rest
+- JWT token-based authentication
+- Rate limiting and brute-force protection
+
+**User-Friendly Experience**
+- QR code scanning for quick setup
+- Manual entry option as fallback
+- 8 one-time backup recovery codes
+- Clear error messages and guidance
+
+**Enterprise-Grade Security**
+- RFC 6238 compliant TOTP implementation
+- 30-second token validity window
+- Constant-time code comparison (timing attack prevention)
+- Comprehensive audit logging
+
+---
+
+## Setup & Installation
+
+### Prerequisites
+
+- **Node.js** 18+ and npm
+- **Python** 3.11+
+- **PostgreSQL** 14+
+
+### Backend Setup
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd MFA-Token-Authenticator/backend
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables
+cp .env.example .env
+# Edit .env with your configuration:
+# - DATABASE_URL=postgresql://user:password@localhost/mfa_db
+# - JWT_SECRET (generate with: openssl rand -hex 32)
+# - ENCRYPTION_KEY (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+
+# Initialize database
+createdb mfa_db
+alembic upgrade head
+
+# Run development server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**API will be available at:** `http://localhost:8000`  
+**Interactive API docs:** `http://localhost:8000/docs`
+
+### Frontend Setup
+
+```bash
+cd ../frontend
+
+# Install dependencies
+npm install
+
+# Set environment variables
+cp .env.example .env
+# Edit .env:
+# VITE_API_URL=http://localhost:8000
+
+# Run development server
+npm run dev
+```
+
+**Frontend will be available at:** `http://localhost:5173`
+
+---
+
+## Technical Overview
+
+### Architecture
+
+The application follows a clean separation between frontend and backend, with RESTful API communication over HTTP. The backend is built with FastAPI, providing asynchronous request handling and automatic API documentation. The frontend uses React with Zustand for state management, ensuring a responsive single-page application experience.
+
+### Authentication Flow
+
+The system implements a two-phase authentication process. During initial login, credentials are validated and a temporary token is issued if the user has MFA enabled. This temporary token allows the user to submit their TOTP code for verification. Once the TOTP code is confirmed valid, a JWT access token is issued for subsequent authenticated requests. The JWT contains user claims and is signed using HMAC-SHA256, allowing stateless authentication without database lookups on every request.
+
+### TOTP Implementation
+
+TOTP codes are generated using the RFC 6238 standard, which builds on HMAC-based one-time passwords. Each user receives a unique base32-encoded secret during MFA setup, which is encrypted with Fernet (AES-256 in CBC mode) before being stored in the database. The authenticator app and server independently generate 6-digit codes every 30 seconds by computing an HMAC-SHA1 hash of the current time counter and the shared secret. The server validates submitted codes with a window of ±30 seconds to account for clock drift and network latency.
+
+### Security Measures
+
+Passwords are hashed using bcrypt with a cost factor of 12, providing strong resistance against brute-force attacks. The bcrypt algorithm automatically generates and includes a salt with each hash, preventing rainbow table attacks. TOTP secrets are encrypted at rest using Fernet symmetric encryption, ensuring that database compromise alone doesn't allow code generation. JWT tokens have a 30-minute expiration, with refresh tokens lasting 7 days to balance security and user convenience.
+
+Backup codes are generated using cryptographically secure random number generation and stored as bcrypt hashes. Each code can only be used once, tracked in the database with a used timestamp. Rate limiting is applied to login and MFA verification endpoints to prevent brute-force attacks, with progressive lockout after repeated failures.
+
+### Database Schema
+
+The system uses PostgreSQL with SQLAlchemy ORM, featuring four main tables: users, mfa_secrets, backup_codes, and login_attempts. Foreign key relationships ensure referential integrity, with cascade deletes removing all MFA data when a user is deleted. Indexes on username and email fields optimize lookup performance during authentication.
+
+### Technology Stack
+
+**Backend:**
+- FastAPI - Asynchronous Python web framework
+- SQLAlchemy - ORM for database interactions
+- PostgreSQL - Primary data store
+- PyOTP - RFC 6238 TOTP implementation
+- bcrypt - Password hashing
+- cryptography (Fernet) - Secret encryption
+- PyJWT - JWT token handling
+- Pydantic - Request/response validation
+
+**Frontend:**
+- React - UI component library
+- Zustand - Lightweight state management
+- Vite - Build tool and dev server
+- React Router - Client-side routing
+- TailwindCSS - Utility-first styling
+
+---
+
+## API Endpoints
+
+### Authentication
+
+**POST** `/api/auth/register` - Register new user account  
+**POST** `/api/auth/login` - Authenticate with username and password  
+**POST** `/api/auth/verify-mfa` - Verify TOTP code and complete login  
+
+### MFA Management
+
+**POST** `/api/mfa/setup` - Generate TOTP secret and QR code (requires auth)  
+**POST** `/api/mfa/verify` - Verify TOTP code and activate MFA (requires auth)  
+**POST** `/api/mfa/reset` - Reset MFA configuration (requires auth)  
+**POST** `/api/mfa/verify-backup` - Verify backup code for account recovery  
+
+Full API documentation with request/response schemas is available at `http://localhost:8000/docs` when the backend is running.
+
+---
+
+## License
+
+MIT License
+
+---
 
 ### What is Authentication?
 
