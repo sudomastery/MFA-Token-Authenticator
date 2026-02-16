@@ -1203,14 +1203,4 @@ This is a learning project! Feel free to:
 
 ## License
 
-MIT License - Feel free to use this for learning purposes!
-
----
-
-## Acknowledgments
-
-Built to understand the inner workings of Multi-Factor Authentication and modern authentication systems. Special thanks to the open-source community for the amazing tools and libraries that make projects like this possible.
-
----
-
-**Happy Learning! 🚀🔐**
+MIT License
