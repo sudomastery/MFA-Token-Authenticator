@@ -1,107 +1,123 @@
 # MFA Token Authenticator
 
-A complete Multi-Factor Authentication (MFA) module that enables users to securely **register**, **verify**, and **recover** their accounts using Time-based One-Time Passwords (TOTP). Works seamlessly with **Microsoft Authenticator**, **Ente Auth**, **Google Authenticator**, and any other TOTP-compatible authenticator application.
+A production-ready Multi-Factor Authentication (MFA) system implementing Time-based One-Time Passwords (TOTP) with full support for industry-standard authenticator applications including Microsoft Authenticator, Ente Auth, Google Authenticator, and any RFC 6238-compliant TOTP client.
 
 ---
 
-## User Flow Showcase
+## Overview
 
-### 1. Login and Registration
-New users can register by providing a username, email, and secure password. Existing users can log in with their credentials and complete MFA verification using their authenticator app. A backup code recovery option is available for users who've lost access to their authenticator device.
+This project provides a complete MFA authentication solution with user registration, two-factor login, and account recovery capabilities. The system features a FastAPI backend with PostgreSQL database and a React frontend, implementing industry best practices for secure authentication.
+
+### Screenshots
+
+#### Login and Registration
+Users authenticate with username and password credentials. MFA verification is required for accounts with two-factor authentication enabled. Account recovery via backup codes is supported for users who have lost access to their authenticator device.
 
 ![Login and Registration](screenshots/login_and_authentication.png)
 
-### 2. MFA Setup
-After registration or when enabling MFA, users scan a QR code with their authenticator app and receive backup recovery codes for emergency access.
+#### MFA Setup
+During enrollment, users scan a QR code with their authenticator application to establish the shared TOTP secret. Eight backup recovery codes are generated and displayed for secure storage.
 
 ![MFA Setup - QR Code](screenshots/mfa_setup.png)
 
-### 3. Backup Codes
-Users receive 8 one-time backup codes to save securely. These codes can be used to regain access if the authenticator device is lost.
+#### Backup Codes
+Single-use backup codes provide emergency account access when the primary authenticator device is unavailable.
 
 ![Backup Codes](screenshots/backup_codes.png)
 
-### 4. MFA Verification
-After successfuly entering the MFA users are redirected to the protected resource they have access to.
+#### Protected Resources
+After successful MFA verification, users gain access to protected application resources and dashboard.
 
 ![MFA Verification](screenshots/security_dashboard.png)
 
 ---
 
-## What This Project Does
+## Features
 
-This MFA module provides:
+### Authentication Capabilities
+- User registration with email verification
+- Password-based authentication with bcrypt hashing (12 rounds)
+- TOTP-based two-factor authentication
+- Backup code generation and verification
+- MFA reset and re-enrollment
+- JWT token-based session management (30-minute expiration)
 
-- **Complete Registration Flow** - Create account with secure password hashing
-- **MFA Enrollment** - Generate TOTP secrets and QR codes for authenticator apps
-- **Two-Factor Login** - Verify password + TOTP code for enhanced security
-- **Account Recovery** - Use backup codes to regain access if authenticator device is lost
-- **MFA Reset** - Reset and re-enroll MFA after recovery
-- **Universal Compatibility** - Works with Microsoft Authenticator, Ente Auth, Google Authenticator, and any TOTP-based app
+### Security Implementation
+- RFC 6238 compliant TOTP generation
+- Fernet (AES-256) encryption for TOTP secrets at rest
+- Constant-time comparison for token verification
+- Rate limiting on authentication endpoints
+- Brute-force protection with progressive lockout
+- Secure random number generation for backup codes
+- Password strength validation
 
-### Key Features
-
-**Secure by Design**
-- Password hashing with bcrypt (12 rounds)
-- Fernet encryption (AES-256) for TOTP secrets at rest
-- JWT token-based authentication
-- Rate limiting and brute-force protection
-
-**User-Friendly Experience**
-- QR code scanning for quick setup
-- Manual entry option as fallback
-- 8 one-time backup recovery codes
-- Clear error messages and guidance
-
-**Enterprise-Grade Security**
-- RFC 6238 compliant TOTP implementation
-- 30-second token validity window
-- Constant-time code comparison (timing attack prevention)
-- Comprehensive audit logging
+### User Experience
+- QR code generation for quick authenticator setup
+- Manual secret entry as alternative to QR scanning
+- Clear error messaging with security consideration
+- Responsive design for mobile and desktop
+- Persistent authentication state
 
 ---
 
-## Setup & Installation
+## Installation
 
-### Prerequisites
+### Requirements
 
-- **Node.js** 18+ and npm
-- **Python** 3.11+
-- **PostgreSQL** 14+
+- Node.js 18.x or higher
+- Python 3.11 or higher
+- PostgreSQL 14.x or higher
+- npm or yarn package manager
 
-### Backend Setup
+### Backend Configuration
 
 ```bash
-# Clone repository
+# Clone the repository
 git clone <repository-url>
 cd MFA-Token-Authenticator/backend
 
-# Create virtual environment
+# Create and activate virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
 
-# Set environment variables
+# Configure environment variables
 cp .env.example .env
-# Edit .env with your configuration:
-# - DATABASE_URL=postgresql://user:password@localhost/mfa_db
-# - JWT_SECRET (generate with: openssl rand -hex 32)
-# - ENCRYPTION_KEY (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+```
 
-# Initialize database
+Edit `.env` with the following configuration:
+
+```bash
+DATABASE_URL=postgresql://user:password@localhost/mfa_db
+JWT_SECRET=<generate-with-openssl-rand-hex-32>
+ENCRYPTION_KEY=<generate-with-fernet>
+```
+
+Generate secure keys:
+```bash
+# JWT secret
+openssl rand -hex 32
+
+# Fernet encryption key
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Initialize the database:
+```bash
 createdb mfa_db
 alembic upgrade head
+```
 
-# Run development server
+Start the backend server:
+```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**API will be available at:** `http://localhost:8000`  
-**Interactive API docs:** `http://localhost:8000/docs`
+The API will be available at `http://localhost:8000` with interactive documentation at `http://localhost:8000/docs`.
 
-### Frontend Setup
+### Frontend Configuration
 
 ```bash
 cd ../frontend
@@ -109,80 +125,268 @@ cd ../frontend
 # Install dependencies
 npm install
 
-# Set environment variables
+# Configure environment
 cp .env.example .env
-# Edit .env:
-# VITE_API_URL=http://localhost:8000
+```
 
-# Run development server
+Edit `.env`:
+```bash
+VITE_API_URL=http://localhost:8000
+```
+
+Start the development server:
+```bash
 npm run dev
 ```
 
-**Frontend will be available at:** `http://localhost:5173`
+The application will be accessible at `http://localhost:5173`.
 
 ---
 
-## Technical Overview
+## Architecture
 
-### Architecture
+### System Design
 
-The application follows a clean separation between frontend and backend, with RESTful API communication over HTTP. The backend is built with FastAPI, providing asynchronous request handling and automatic API documentation. The frontend uses React with Zustand for state management, ensuring a responsive single-page application experience.
+The application implements a decoupled architecture with separate frontend and backend services communicating via REST API. The backend provides a comprehensive authentication API with automatic schema validation, while the frontend delivers a responsive single-page application.
 
-### Authentication Flow
+**Backend Stack:**
+- FastAPI for asynchronous HTTP request handling
+- SQLAlchemy ORM for database abstraction
+- PostgreSQL for persistent data storage
+- Pydantic for request/response validation
+- Alembic for database migrations
 
-The system implements a two-phase authentication process. During initial login, credentials are validated and a temporary token is issued if the user has MFA enabled. This temporary token allows the user to submit their TOTP code for verification. Once the TOTP code is confirmed valid, a JWT access token is issued for subsequent authenticated requests. The JWT contains user claims and is signed using HMAC-SHA256, allowing stateless authentication without database lookups on every request.
+**Frontend Stack:**
+- React 18 for component-based UI
+- Zustand for client-side state management
+- Vite for optimized build tooling
+- React Router for client-side routing
+- TailwindCSS for responsive styling
 
-### TOTP Implementation
+### Authentication Workflow
 
-TOTP codes are generated using the RFC 6238 standard, which builds on HMAC-based one-time passwords. Each user receives a unique base32-encoded secret during MFA setup, which is encrypted with Fernet (AES-256 in CBC mode) before being stored in the database. The authenticator app and server independently generate 6-digit codes every 30 seconds by computing an HMAC-SHA1 hash of the current time counter and the shared secret. The server validates submitted codes with a window of ±30 seconds to account for clock drift and network latency.
+The system implements a multi-stage authentication process:
 
-### Security Measures
+1. **Initial Authentication**: User credentials are validated against bcrypt password hashes stored in the database.
 
-Passwords are hashed using bcrypt with a cost factor of 12, providing strong resistance against brute-force attacks. The bcrypt algorithm automatically generates and includes a salt with each hash, preventing rainbow table attacks. TOTP secrets are encrypted at rest using Fernet symmetric encryption, ensuring that database compromise alone doesn't allow code generation. JWT tokens have a 30-minute expiration, with refresh tokens lasting 7 days to balance security and user convenience.
+2. **MFA Challenge**: If MFA is enabled, a temporary token (10-minute expiration) is issued to authorize the TOTP verification request.
 
-Backup codes are generated using cryptographically secure random number generation and stored as bcrypt hashes. Each code can only be used once, tracked in the database with a used timestamp. Rate limiting is applied to login and MFA verification endpoints to prevent brute-force attacks, with progressive lockout after repeated failures.
+3. **TOTP Verification**: The user submits a 6-digit code from their authenticator. The server decrypts the stored TOTP secret, generates expected codes for the current time window (±30 seconds), and performs constant-time comparison.
+
+4. **Session Establishment**: Upon successful verification, a JWT access token is issued with a 30-minute expiration and a refresh token with a 7-day expiration.
+
+### TOTP Protocol Implementation
+
+The system adheres to RFC 6238 for Time-based One-Time Password generation:
+
+- **Secret Generation**: 160-bit (32-character base32) cryptographically random secrets are generated using PyOTP.
+- **Code Generation**: 6-digit codes are produced by truncating HMAC-SHA1(secret, time_counter) where time_counter = floor(unix_timestamp / 30).
+- **Validation Window**: Codes are accepted within a ±30 second window to accommodate clock skew.
+- **Secret Storage**: TOTP secrets are encrypted using Fernet (AES-256-CBC) before database storage.
+
+### Security Architecture
+
+**Password Security:**
+- Passwords are hashed using bcrypt with a cost factor of 12 (2^12 iterations).
+- Each hash includes a unique salt generated by the bcrypt algorithm.
+- Verification uses constant-time comparison to prevent timing attacks.
+
+**Token Security:**
+- JWT tokens are signed using HMAC-SHA256 with a server-side secret.
+- Tokens include expiration claims (exp) and issued-at timestamps (iat).
+- Token validation occurs on every protected endpoint request.
+
+**Backup Code Security:**
+- Eight 8-character hexadecimal codes are generated using cryptographically secure random number generation.
+- Codes are hashed with bcrypt (cost factor 12) before database storage.
+- Each code is single-use and marked as consumed after verification.
+
+**Rate Limiting:**
+- Login endpoint: 5 attempts per minute per IP address.
+- MFA verification: 3 attempts per minute per IP address.
+- Progressive lockout after repeated authentication failures.
 
 ### Database Schema
 
-The system uses PostgreSQL with SQLAlchemy ORM, featuring four main tables: users, mfa_secrets, backup_codes, and login_attempts. Foreign key relationships ensure referential integrity, with cascade deletes removing all MFA data when a user is deleted. Indexes on username and email fields optimize lookup performance during authentication.
+The relational schema consists of four primary tables:
 
-### Technology Stack
+**users**
+- Primary user account information
+- Indexed columns: username, email
+- Stores bcrypt password hash and MFA status flag
 
-**Backend:**
-- FastAPI - Asynchronous Python web framework
-- SQLAlchemy - ORM for database interactions
-- PostgreSQL - Primary data store
-- PyOTP - RFC 6238 TOTP implementation
-- bcrypt - Password hashing
-- cryptography (Fernet) - Secret encryption
-- PyJWT - JWT token handling
-- Pydantic - Request/response validation
+**mfa_secrets**
+- One-to-one relationship with users
+- Stores Fernet-encrypted TOTP secret
+- Tracks activation status and verification timestamp
 
-**Frontend:**
-- React - UI component library
-- Zustand - Lightweight state management
-- Vite - Build tool and dev server
-- React Router - Client-side routing
-- TailwindCSS - Utility-first styling
+**backup_codes**
+- One-to-many relationship with users
+- Stores bcrypt hashes of backup codes
+- Tracks usage status and consumption timestamp
+
+**login_attempts**
+- Audit log of authentication attempts
+- Records timestamp, IP address, and success status
+- Used for rate limiting and security monitoring
+
+Foreign key constraints ensure referential integrity with cascade deletion for user-related data.
 
 ---
 
-## API Endpoints
+## API Reference
 
-### Authentication
+### Authentication Endpoints
 
-**POST** `/api/auth/register` - Register new user account  
-**POST** `/api/auth/login` - Authenticate with username and password  
-**POST** `/api/auth/verify-mfa` - Verify TOTP code and complete login  
+#### POST /api/auth/register
 
-### MFA Management
+Register a new user account.
 
-**POST** `/api/mfa/setup` - Generate TOTP secret and QR code (requires auth)  
-**POST** `/api/mfa/verify` - Verify TOTP code and activate MFA (requires auth)  
-**POST** `/api/mfa/reset` - Reset MFA configuration (requires auth)  
-**POST** `/api/mfa/verify-backup` - Verify backup code for account recovery  
+**Request Body:**
+```json
+{
+  "username": "string (3-50 characters)",
+  "email": "string (valid email format)",
+  "password": "string (minimum 8 characters, must include uppercase and digit)"
+}
+```
 
-Full API documentation with request/response schemas is available at `http://localhost:8000/docs` when the backend is running.
+**Response:** 201 Created
+```json
+{
+  "id": 1,
+  "username": "johndoe",
+  "email": "john@example.com",
+  "mfa_enabled": false,
+  "created_at": "2026-02-16T10:30:00Z"
+}
+```
+
+#### POST /api/auth/login
+
+Authenticate user credentials.
+
+**Request Body:**
+```json
+{
+  "username": "string",
+  "password": "string",
+  "mfa_token": "string (optional, required if MFA enabled)"
+}
+```
+
+**Response:** 200 OK
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "user": {
+    "id": 1,
+    "username": "johndoe",
+    "email": "john@example.com",
+    "mfa_enabled": true
+  }
+}
+```
+
+### MFA Management Endpoints
+
+#### POST /api/mfa/setup
+
+Generate TOTP secret and QR code for MFA enrollment. Requires valid JWT token.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response:** 200 OK
+```json
+{
+  "secret": "JBSWY3DPEHPK3PXP",
+  "qr_code": "data:image/png;base64,iVBORw0KGgoAAAA...",
+  "manual_entry_key": "JBSW-Y3DP-EHPK-3PXP",
+  "otpauth_url": "otpauth://totp/MFAApp:john@example.com?secret=..."
+}
+```
+
+#### POST /api/mfa/verify
+
+Activate MFA after scanning QR code. Requires valid JWT token.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Request Body:**
+```json
+{
+  "token": "123456"
+}
+```
+
+**Response:** 200 OK
+```json
+{
+  "status": "enabled",
+  "backup_codes": [
+    "A3F7B2E1",
+    "F91C4D8A",
+    "2B7E6C1F",
+    "8D4A1E5C",
+    "C6B2F9A3",
+    "E8D1C4B7",
+    "5A3E9F2D",
+    "D7C3A6E8"
+  ],
+  "message": "MFA enabled successfully"
+}
+```
+
+#### POST /api/mfa/reset
+
+Reset MFA configuration. Requires valid JWT token.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response:** 200 OK
+```json
+{
+  "status": "disabled",
+  "message": "MFA configuration has been reset"
+}
+```
+
+#### POST /api/mfa/verify-backup
+
+Verify backup code for account recovery.
+
+**Request Body:**
+```json
+{
+  "username": "johndoe",
+  "backup_code": "A3F7B2E1"
+}
+```
+
+**Response:** 200 OK
+```json
+{
+  "message": "Backup code verified",
+  "temp_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "username": "johndoe",
+    "email": "john@example.com"
+  }
+}
+```
+
+Complete API documentation with request/response schemas and example requests is available via the interactive Swagger UI at `http://localhost:8000/docs`.
 
 ---
 
@@ -190,64 +394,15 @@ Full API documentation with request/response schemas is available at `http://loc
 
 MIT License
 
+Copyright (c) 2026
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 ---
-
-**Authentication** is the process of verifying the identity of a user, device, or system. It answers the question: *"Are you really who you claim to be?"*
-
-Think of it like showing your ID at an airport security checkpoint - you're proving you are the person on the ticket.
-
-#### Types of Authentication Factors
-
-Authentication factors are categorized into three types:
-
-1. **Something You Know** (Knowledge Factor)
-   - Password, PIN, security question answers
-   - Most common but least secure on its own
-
-2. **Something You Have** (Possession Factor)
-   - Physical device: smartphone, security key, smart card
-   - OTP tokens, authenticator apps
-   - This is where MFA apps come in!
-
-3. **Something You Are** (Inherence Factor)
-   - Biometrics: fingerprint, face recognition, iris scan
-   - Most secure but requires special hardware
-
-### What is a Token?
-
-In authentication systems, a **token** is a piece of data that represents a user's authentication state or authorization to access resources. There are several types of tokens:
-
-#### 1. **Session Tokens**
-- Generated after successful login
-- Stored on the server (or in a JWT)
-- Used to maintain user state across requests
-- Example: `session_id=abc123xyz`
-
-#### 2. **Access Tokens** (e.g., JWT - JSON Web Tokens)
-- Self-contained tokens that carry user information
-- Can be verified without database lookups
-- Have expiration times for security
-- Structure: `header.payload.signature`
-
-```
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMjM0LCJleHAiOjE2NDA5OTUyMDB9.signature
-```
-
-#### 3. **One-Time Password (OTP) Tokens**
-- **THIS IS WHAT WE'RE IMPLEMENTING!**
-- Temporary codes (usually 6 digits)
-- Valid for a short period (typically 30 seconds)
-- Generated using cryptographic algorithms
-- Used as the second factor in MFA
-
-### How Do Tokens Work?
-
-#### Session Token Flow:
-```
-1. User logs in with credentials
-2. Server validates credentials
-3. Server generates unique session token
-4. Token stored in database + sent to client (cookie/storage)
 5. Client includes token in subsequent requests
 6. Server validates token for each request
 7. User logs out → token invalidated
