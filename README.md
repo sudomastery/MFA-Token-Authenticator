@@ -192,8 +192,6 @@ MIT License
 
 ---
 
-### What is Authentication?
-
 **Authentication** is the process of verifying the identity of a user, device, or system. It answers the question: *"Are you really who you claim to be?"*
 
 Think of it like showing your ID at an airport security checkpoint - you're proving you are the person on the ticket.
